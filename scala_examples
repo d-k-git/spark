@@ -1,0 +1,28 @@
+// *** 1. Spark Window Functions ***
+
+
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{col, count, row_number}
+
+
+//  1.1 rank Window Function
+
+val df1 = spark.sql("select * from stg_db.cohort_log where is_cancel = 0")
+val windowSpec = Window.partitionBy(df1("client_id")).orderBy($"snapshot_ts".desc)
+val outDF_df1 = df1.select($"*").withColumn("rank", rank.over(windowSpec)).filter($"rank" === 1) 
+	  
+
+// 1.2 count  Window Aggregate Function
+
+val df2 = spark.sql("select * from stg_db.table_union")
+val windowSpec = Window.partitionBy(df2("client_id")).orderBy($"snapshot_ts".desc)
+val outDF_df2 = df2.select($"*").withColumn("count", count($"client_id").over(windowSpec))
+
+// 1.3 row_number Window Function
+
+val outDF_df3 = df2.withColumn("row_number", row_number.over(windowSpec))
+    .withColumn("delete_date",
+        when(col("delete_date").isNull, "2099-01-01")
+        otherwise col("delete_date"))      
+    .select($"*")
+    .filter($"row_number" === 1)
