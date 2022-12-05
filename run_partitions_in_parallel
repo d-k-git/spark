@@ -1,0 +1,30 @@
+#Looping partitions  with par function  which  allows computation to run in parallel to take  advantage of multi-core processing
+
+val partitionsList = List("PART20220701","PART20220702","PART20220703","PART20220704","PART20220705").par
+
+for(party <- partitionsList) {
+
+   
+
+    val query=s"""(select REGEXP_SUBSTR(LOCAL_CALLID, '[^: ]+', 1, 1) AS sessions,  ltrim(calling_number, '+7') AS calling_number, to_char(date '1970-01-01' + (START_TIME/86400000), 'YYYY-MM-DD HH24:MI:SS') as new_START_TIME, '$party' as day, case when mod(start_time, 10) < 0 then 0 else mod(start_time, 10) end as part_key FROM DB.ORDERS partition($party))"""
+
+    val df = (spark.read.format("jdbc")
+    .option("url", "jdbc:oracle:thin:@11.11.11.111:1521:DB")
+    .option("dbtable", s"$query")
+    .option("user", "DB")
+    .option("password", "***")
+    .option("lowerBound", 0)
+    .option("upperBound", 10)
+    .option("numPartitions", 10)
+    .option("partitionColumn", "part_key")
+    .option("driver", "oracle.jdbc.driver.OracleDriver")
+    .load())
+
+    spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
+    df.write.mode("overwrite").parquet(s"/warehouse/tablespace/external/hive/new_db.db/parallel_test/$party")
+
+    //Write parquet files into table 
+    
+    val outDF = spark.read.parquet(s"/warehouse/tablespace/external/hive/new_db.db/parallel_tes/$party/*.parquet")
+    outDF.write.mode(SaveMode.Append).partitionBy("day").saveAsTable("new_db.parallel_test")
